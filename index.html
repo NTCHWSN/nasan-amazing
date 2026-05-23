@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#2C5F8D">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="application-name" content="Na San Amazing">
+  <meta name="apple-mobile-web-app-title" content="Na San Amazing">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" sizes="192x192" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="description" content="เกมคณิตศาสตร์ ม.2 สอนทฤษฎีบทพีทาโกรัส ผ่านการผจญภัยในอำเภอบ้านนาสาร จ.สุราษฎร์ธานี">
+  <title>นาสารอเมซิ่ง! คดีลึกลับสามเหลี่ยมพีทาโกรัส</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700;800&family=Sarabun:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+    html, body {
+      margin: 0; padding: 0; width: 100%; height: 100%;
+      overflow: hidden;
+      background: #1A1A2E;
+      font-family: 'Noto Sans Thai', 'Sarabun', 'Tahoma', sans-serif;
+      overscroll-behavior: none;
+      touch-action: none;
+    }
+    #game-container {
+      position: fixed; inset: 0;
+      width: 100vw; height: 100vh; height: 100dvh;
+      display: flex; align-items: center; justify-content: center;
+      background: #1A1A2E;
+    }
+    /* ปล่อยให้ Phaser Scale.FIT จัดการขนาด canvas เอง
+       — ห้ามใส่ width/height !important จะทำให้ pointer ผิดตำแหน่ง */
+    #game-container canvas {
+      display: block;
+      max-width: 100%; max-height: 100%;
+      touch-action: none;
+    }
+    #loading {
+      position: fixed; inset: 0;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      background: linear-gradient(135deg, #2C5F8D 0%, #1A1A2E 100%);
+      color: #F8F4E8; z-index: 9999;
+      transition: opacity 0.5s ease;
+      padding: 20px; text-align: center;
+    }
+    #loading.fade-out { opacity: 0; pointer-events: none; }
+    #loading h1 {
+      font-family: 'Noto Sans Thai', 'Sarabun', sans-serif;
+      font-size: clamp(22px, 5vw, 40px);
+      font-weight: 700; margin: 0 0 12px;
+      text-shadow: 2px 2px 0 #1A1A2E;
+    }
+    #loading .subtitle { font-size: clamp(14px, 3vw, 18px); opacity: 0.85; margin: 0 0 32px; }
+    #loading .spinner {
+      width: 56px; height: 56px;
+      border: 5px solid rgba(248, 244, 232, 0.2);
+      border-top-color: #F4B942;
+      border-radius: 50%;
+      animation: spin 0.9s linear infinite;
+    }
+    #loading .status { margin-top: 16px; font-size: 14px; opacity: 0.7; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    #error {
+      position: fixed; inset: 0;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px; background: #1A1A2E; color: #F8F4E8;
+      text-align: center; z-index: 10000;
+    }
+    #error.show { display: flex; }
+    #error h2 {
+      font-family: 'Prompt', sans-serif;
+      color: #D9263D; font-size: 28px; margin: 0 0 12px;
+    }
+    #error p { max-width: 500px; line-height: 1.6; margin: 0 0 16px; }
+    #error .hint { font-size: 13px; opacity: 0.6; max-width: 400px; }
+
+    /* ───── file:// detection — show clear message when opened locally ───── */
+    #file-protocol-warn {
+      position: fixed; inset: 0;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 24px; background: #1A1A2E; color: #F8F4E8;
+      text-align: center; z-index: 10001;
+    }
+    #file-protocol-warn.show { display: flex; }
+    #file-protocol-warn h2 {
+      color: #F4B942; font-size: 26px; margin: 0 0 16px;
+    }
+    #file-protocol-warn p { max-width: 560px; line-height: 1.7; margin: 0 0 14px; font-size: 16px; }
+    #file-protocol-warn code {
+      background: rgba(255,255,255,0.15); padding: 4px 10px;
+      border-radius: 6px; font-size: 15px;
+    }
+    #file-protocol-warn .btn {
+      display: inline-block; margin-top: 14px;
+      padding: 12px 28px; background: #6BB13D; color: #fff;
+      border-radius: 10px; font-size: 18px; font-weight: 700;
+      cursor: pointer; text-decoration: none; border: 0;
+    }
+
+    /* ───── Portrait warning for mobile ───── */
+    #rotate-hint {
+      position: fixed; inset: 0;
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 30px; background: rgba(26, 26, 46, 0.96); color: #F8F4E8;
+      text-align: center; z-index: 9998;
+    }
+    @media (max-width: 900px) and (orientation: portrait) {
+      #rotate-hint { display: flex; }
+    }
+    #rotate-hint .icon {
+      font-size: 70px; margin-bottom: 18px;
+      animation: rotate-anim 1.5s ease-in-out infinite;
+    }
+    @keyframes rotate-anim {
+      0%, 100% { transform: rotate(0deg); }
+      50% { transform: rotate(90deg); }
+    }
+    #rotate-hint h2 {
+      font-size: 24px; margin: 0 0 12px; color: #F4B942;
+    }
+    #rotate-hint p {
+      font-size: 16px; opacity: 0.9; max-width: 320px; line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="loading">
+    <h1>🎮 นาสารอเมซิ่ง!</h1>
+    <p class="subtitle">คดีลึกลับสามเหลี่ยมพีทาโกรัส</p>
+    <div class="spinner"></div>
+    <p class="status" id="loading-status">กำลังโหลด Phaser.js…</p>
+  </div>
+
+  <div id="error">
+    <h2>⚠️ เกิดข้อผิดพลาด</h2>
+    <p id="error-message"></p>
+    <p class="hint">ลองรีเฟรชหน้า หรือตรวจสอบการเชื่อมต่ออินเตอร์เน็ต<br>(Phaser โหลดจาก CDN ต้องมีเน็ตในการเปิดครั้งแรก)</p>
+  </div>
+
+  <!-- แจ้งเตือนกรณีเปิดผ่าน file:// -->
+  <div id="file-protocol-warn">
+    <h2>📡 กรุณาเปิดผ่านเซิร์ฟเวอร์ก่อน</h2>
+    <p>คุณกำลังเปิดเกมโดยตรงจากไฟล์ ทำให้ภาพและเสียงโหลดไม่ได้</p>
+    <p>กรุณา <strong>ดับเบิ้ลคลิกที่ไฟล์ <code>start-server.bat</code></strong> ก่อน<br>
+       แล้วเปิดเบราว์เซอร์ไปที่ <code>http://localhost:5500</code></p>
+    <p style="opacity:0.7; font-size:14px; margin-top:20px;">หากยังไม่มี Python ติดตั้ง ให้ติดตั้งจาก python.org ก่อน</p>
+    <button class="btn" onclick="location.href='http://localhost:5500'">ลองเปิด localhost:5500</button>
+  </div>
+
+  <!-- แจ้งให้หมุนหน้าจอแนวนอน บนมือถือ -->
+  <div id="rotate-hint">
+    <div class="icon">📱</div>
+    <h2>กรุณาหมุนเครื่อง</h2>
+    <p>เกมนี้เล่นในแนวนอน (Landscape)<br>กรุณาหมุนโทรศัพท์ของคุณเพื่อเริ่มเล่น</p>
+  </div>
+
+  <div id="game-container"></div>
+
+  <!-- ตรวจ file:// protocol — ก่อนโหลด Phaser -->
+  <script>
+    const isAndroidAsset = window.location.href.startsWith('file:///android_asset/');
+    if (window.location.protocol === 'file:' && !isAndroidAsset) {
+      document.getElementById('loading').style.display = 'none';
+      document.getElementById('file-protocol-warn').classList.add('show');
+      throw new Error('Game must run from HTTP server');
+    }
+  </script>
+
+  <!-- 1. Phaser.js 3.70 (local copy for offline APK use) -->
+  <script src="vendor/phaser.min.js"></script>
+
+  <!-- 2. ค่าตั้งค่ากลาง -->
+  <script src="src/config.js"></script>
+
+  <!-- 3. UI Components -->
+  <script src="src/ui/TextStyle.js"></script>
+  <script src="src/ui/UIButton.js"></script>
+  <script src="src/ui/NumberPad.js"></script>
+  <script src="src/ui/VirtualJoystick.js"></script>
+
+  <!-- 4. ระบบกลาง -->
+  <script src="src/systems/PlaceholderFactory.js"></script>
+  <script src="src/systems/TriangleRenderer.js"></script>
+  <script src="src/systems/QuestionGenerator.js"></script>
+  <script src="src/systems/SaveManager.js"></script>
+  <script src="src/systems/SoundManager.js"></script>
+  <script src="src/data/DialogueData.js"></script>
+  <script src="src/data/DungeonData.js"></script>
+
+  <!-- 5. Scenes -->
+  <script src="src/scenes/BootScene.js"></script>
+  <script src="src/scenes/PreloadScene.js"></script>
+  <script src="src/scenes/TitleScene.js"></script>
+  <script src="src/scenes/HubVillageScene.js"></script>
+  <script src="src/scenes/DungeonIntroScene.js"></script>
+  <script src="src/scenes/DungeonExploreScene.js"></script>
+  <script src="src/scenes/LearnScene.js"></script>
+  <script src="src/scenes/EndingScene.js"></script>
+  <script src="src/scenes/AssetTestScene.js"></script>
+  <script src="src/scenes/QuestionTestScene.js"></script>
+  <script src="src/scenes/BattleScene.js"></script>
+  <script src="src/scenes/BattleTestScene.js"></script>
+
+  <!-- 6. Main entry -->
+  <script src="src/main.js"></script>
+
+  <script>
+    if ('serviceWorker' in navigator && window.location.protocol !== 'file:') {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./service-worker.js').catch((error) => {
+          console.warn('Service worker registration failed:', error);
+        });
+      });
+    }
+  </script>
+
+</body>
+</html>
