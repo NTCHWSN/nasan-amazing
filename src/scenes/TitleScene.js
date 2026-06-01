@@ -14,6 +14,7 @@ class TitleScene extends Phaser.Scene {
     this._addButtons(width, height);
     this._addHeroes(width, height);
     this._addSoundToggle(width, height);
+    this._addFullscreenToggle(width, height);
     this._addFooter(width, height);
 
     /* เริ่ม BGM อัตโนมัติเมื่อเข้า title */
@@ -24,22 +25,35 @@ class TitleScene extends Phaser.Scene {
   }
 
   _addBackground(width, height) {
-    /* ใช้ bg_title ที่ผู้ใช้สร้าง — ภาพป่าน้ำตกสำหรับหน้าแรก */
-    if (this.textures.exists('bg_title')) {
-      const bg = this.add.image(width / 2, height / 2, 'bg_title');
-      const scale = Math.max(width / bg.width, height / bg.height);
-      bg.setScale(scale);
-    } else if (this.textures.exists('bg_d1')) {
-      const bg = this.add.image(width / 2, height / 2, 'bg_d1');
-      const scale = Math.max(width / bg.width, height / bg.height);
-      bg.setScale(scale);
+    /* ใช้ bg_title ที่ผู้ใช้สร้าง — ภาพป่าน้ำตกสำหรับหน้าแรก
+       ปัญหาเดิม: cover-scale บนจอกว้าง → ซูมจนรายละเอียดบน/ล่างถูกตัดหาย
+       แก้: วาด 2 ชั้น
+         (1) ชั้นพื้น = ภาพเดียวกันแบบ cover + เบลอ + ทำมืด เติมเต็มจอไม่ให้มีขอบ
+         (2) ชั้นหน้า = ภาพเต็ม (contain) ไม่ตัดขอบ → เห็นรายละเอียดครบ */
+    const bgKey = this.textures.exists('bg_title') ? 'bg_title'
+                : this.textures.exists('bg_d1')    ? 'bg_d1'
+                : null;
+
+    if (bgKey) {
+      const tex = this.textures.get(bgKey).getSourceImage();
+      const iw = tex.width, ih = tex.height;
+
+      /* (1) ชั้นพื้น cover (เบลอ+มืด) เติมเต็มจอ */
+      const back = this.add.image(width / 2, height / 2, bgKey);
+      back.setScale(Math.max(width / iw, height / ih));
+      back.setTint(0x6a7a88);                 // ทำให้จืดลงเป็นฉากหลัง
+      try { if (back.preFX) back.preFX.addBlur(0, 2, 2, 1, 0xffffff, 6); } catch (e) {}
+
+      /* (2) ชั้นหน้า contain — เห็นภาพเต็มไม่ถูกตัด */
+      const front = this.add.image(width / 2, height / 2, bgKey);
+      front.setScale(Math.min(width / iw, height / ih));
     } else {
       const g = this.add.graphics();
       g.fillGradientStyle(0x2C5F8D, 0x2C5F8D, 0x1A1A2E, 0x1A1A2E, 1);
       g.fillRect(0, 0, width, height);
     }
     const overlay = this.add.graphics();
-    overlay.fillStyle(0x1A1A2E, 0.35);
+    overlay.fillStyle(0x1A1A2E, 0.28);
     overlay.fillRect(0, 0, width, height);
   }
 
@@ -199,6 +213,55 @@ class TitleScene extends Phaser.Scene {
       else SoundManager.startBGM();
       SoundManager.play('click');
     });
+  }
+
+  _addFullscreenToggle(width, height) {
+    /* ปุ่มเต็มจอ — ป้ายชัดเจน มุมขวาบน (ใต้ปุ่มเสียง) เพื่อให้หาเจอง่าย
+       กดเพื่อซ่อนแถบ browser ให้เล่นเต็มจอ — ต้องเรียกจาก user gesture */
+    const fsAvailable = !!(this.scale.fullscreen && this.scale.fullscreen.available);
+    /* ตรวจ iOS (iPhone) ที่ไม่รองรับ Fullscreen API → แนะนำ "เพิ่มไปหน้าโฮม" แทน */
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+                  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+    const btnW = 132, btnH = 44;
+    const px = 20;
+    const cx = width - px - btnW / 2;
+    const cy = px + 50 + 12 + btnH / 2;   // ใต้ปุ่มเสียง (เสียงอยู่ y≈padding..70)
+
+    const bg = this.add.graphics();
+    bg.fillStyle(0x000000, 0.5);
+    bg.fillRoundedRect(cx - btnW / 2, cy - btnH / 2, btnW, btnH, 12);
+    bg.lineStyle(2, 0xFFFFFF, 0.5);
+    bg.strokeRoundedRect(cx - btnW / 2, cy - btnH / 2, btnW, btnH, 12);
+
+    const label = this.add.text(cx, cy,
+      this.scale.isFullscreen ? '🗗 ออกจอเต็ม' : '⛶ เต็มจอ', {
+        fontFamily: NaSan.FONTS.BODY, fontSize: '17px',
+        color: '#FFFFFF', fontStyle: 'bold',
+      }).setOrigin(0.5);
+
+    const zone = this.add.zone(cx, cy, btnW, btnH)
+      .setInteractive({ useHandCursor: true });
+    zone.on('pointerup', () => {
+      if (typeof SoundManager !== 'undefined') SoundManager.play('click');
+      if (fsAvailable) {
+        this.scale.toggleFullscreen();
+      } else if (isIOS) {
+        /* iOS Safari ไม่มี Fullscreen API → แนะนำติดตั้งเป็นแอป */
+        this._showModal('⛶ เล่นแบบเต็มจอบน iPhone/iPad',
+          'Safari บน iPhone ไม่รองรับปุ่มเต็มจอโดยตรง\n\n' +
+          'วิธีเล่นเต็มจอ:\n' +
+          '1. กดปุ่ม "แชร์" (ไอคอน ⬆) ที่แถบล่าง\n' +
+          '2. เลือก "เพิ่มลงในหน้าจอโฮม"\n' +
+          '3. เปิดเกมจากไอคอนบนหน้าจอโฮม → เต็มจอทันที!');
+      } else {
+        this._showModal('⛶ เต็มจอ', 'เบราว์เซอร์นี้ไม่รองรับโหมดเต็มจอ\nลองใช้ Chrome หรือ Safari รุ่นล่าสุด');
+      }
+    });
+
+    /* อัปเดตป้ายเมื่อสถานะเต็มจอเปลี่ยน */
+    this.scale.on('enterfullscreen', () => label.active && label.setText('🗗 ออกจอเต็ม'));
+    this.scale.on('leavefullscreen', () => label.active && label.setText('⛶ เต็มจอ'));
   }
 
   _addFooter(width, height) {

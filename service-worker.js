@@ -1,4 +1,4 @@
-const CACHE_NAME = 'nasan-amazing-v1.0.0-pwa-20260523';
+const CACHE_NAME = 'nasan-amazing-v1.0.0-pwa-20260601';
 
 const PRECACHE_ASSETS = [
   './',

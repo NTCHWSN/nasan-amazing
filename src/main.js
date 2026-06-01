@@ -48,6 +48,27 @@ window.addEventListener('load', () => {
       throw new Error('ไม่พบ scene ใด ๆ ที่ลงทะเบียนไว้');
     }
 
+    /* ───── คำนวณขนาดเกมให้ "เต็มจอ" ตามอัตราส่วนเครื่องจริง ─────
+       เดิม: ล็อค 1280×720 (16:9) แบบตายตัว → มือถือจอกว้าง (เช่น iPhone ~19.5:9)
+             เกิดแถบดำซ้าย-ขวา (letterbox) จอไม่เต็ม
+       ใหม่: ยึดความสูงฐาน 720 แล้วคำนวณความกว้างตามสัดส่วนหน้าจอจริง
+             → Scale.FIT ไม่มีแถบดำอีก เพราะ canvas สัดส่วนตรงกับจอ
+       ฉากทุกฉากใช้ this.scale.width/height อยู่แล้ว จึง re-layout ได้เอง */
+    const calcGameSize = () => {
+      const vw = window.innerWidth  || NaSan.BASE_WIDTH;
+      const vh = window.innerHeight || NaSan.BASE_HEIGHT;
+      const aspect = vw / vh;
+      const baseH = NaSan.BASE_HEIGHT;                 // ความสูงฐาน (ระบบพิกัดฉาก)
+      /* จับคู่อัตราส่วนจอจริงให้ใกล้เคียงที่สุด → ไม่มีแถบดำ (letterbox)
+         จำกัดเฉพาะกรณีสุดโต่งจริง ๆ: 1.4 (เกือบ 3:2) ถึง 3.0 (ยาวมาก) */
+      const clampedAspect = Math.min(3.0, Math.max(1.4, aspect));
+      const w = Math.round(baseH * clampedAspect);
+      return { width: w, height: baseH };
+    };
+    const initSize = calcGameSize();
+    NaSan.GAME_WIDTH  = initSize.width;
+    NaSan.GAME_HEIGHT = initSize.height;
+
     const config = {
       type: Phaser.AUTO,
       parent: 'game-container',
@@ -55,8 +76,8 @@ window.addEventListener('load', () => {
       scale: {
         mode: Phaser.Scale.FIT,
         autoCenter: Phaser.Scale.CENTER_BOTH,
-        width: NaSan.BASE_WIDTH,
-        height: NaSan.BASE_HEIGHT,
+        width: initSize.width,
+        height: initSize.height,
       },
       input: { activePointers: 4 },
       disableContextMenu: true,
@@ -84,6 +105,37 @@ window.addEventListener('load', () => {
           setTimeout(() => loadingEl.remove(), 600);
         }
       });
+
+      /* ───── ปรับขนาดเกมใหม่เมื่อหมุนจอ / browser bar ซ่อน-แสดง ─────
+         คำนวณสัดส่วนใหม่ → setGameSize → restart ฉากที่กำลังเล่นอยู่
+         เพื่อให้ layout จัดตำแหน่งใหม่ตามขนาดที่เปลี่ยน (ฉากสร้าง UI จาก
+         this.scale.width/height ตอน create) — debounce กันสั่นรัว */
+      let _resizeTimer = null;
+      let _lastAspect = initSize.width / initSize.height;
+      const applyResize = () => {
+        const s = calcGameSize();
+        const newAspect = s.width / s.height;
+        /* ทำงานเฉพาะเมื่อสัดส่วนเปลี่ยน "อย่างมีนัย" (เช่น หมุนจอ) มากกว่า 8%
+           — กัน browser bar ซ่อน/แสดง (ความสูงเปลี่ยนเล็กน้อย) ไม่ให้ restart รัว
+             กลางเกม ซึ่งจะรีเซ็ตความคืบหน้าของฉาก */
+        if (Math.abs(newAspect - _lastAspect) / _lastAspect < 0.08) return;
+        _lastAspect = newAspect;
+        NaSan.GAME_WIDTH  = s.width;
+        NaSan.GAME_HEIGHT = s.height;
+        game.scale.setGameSize(s.width, s.height);
+        /* restart เฉพาะฉากที่ active เพื่อให้ re-layout ด้วยขนาดใหม่ */
+        game.scene.getScenes(true).forEach((sc) => {
+          if (sc.scene.key !== 'BootScene' && sc.scene.key !== 'PreloadScene') {
+            sc.scene.restart();
+          }
+        });
+      };
+      const onResize = () => {
+        clearTimeout(_resizeTimer);
+        _resizeTimer = setTimeout(applyResize, 250);
+      };
+      window.addEventListener('resize', onResize);
+      window.addEventListener('orientationchange', () => setTimeout(applyResize, 350));
     };
 
     if (document.fonts && document.fonts.load) {
